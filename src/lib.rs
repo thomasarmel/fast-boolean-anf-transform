@@ -1,4 +1,8 @@
-use num_traits::Unsigned;
+//! # Fast Boolean Algebraic Normal Form (ANF) Transformation functions
+//! This crate provides two functions to transform cellular automata truth tables expressed as unsigned integers or boolean arrays into their Algebraic Normal Form (ANF) representation.
+
+use std::mem::size_of;
+use num_traits::{AsPrimitive, NumCast, Unsigned};
 
 /// Fast ANF transformation for cellular automata truth table rules expressed as unsigned integers
 /// # Arguments
@@ -7,7 +11,8 @@ use num_traits::Unsigned;
 /// # Returns
 /// The ANF transformed rule number, as unsigned integer
 /// # Panics
-/// Panics if the rule number is greater than or equal to 2^(2^n), n being the number of variables in the function, as the rule number cannot exist
+/// Panics if the unsigned type is not large enough to hold the rule number (debug only)
+/// Panics if the rule number is greater than or equal to 2^(2^n), n being the number of variables in the function, as the rule number cannot exist (debug only)
 /// # Example
 /// ```
 /// use fast_boolean_anf_transform::fast_bool_anf_transform_unsigned;
@@ -15,43 +20,54 @@ use num_traits::Unsigned;
 /// ```
 pub fn fast_bool_anf_transform_unsigned<
     U: Unsigned
-        + std::ops::Shr<u32>
-        + std::ops::BitOr<u32, Output = U>
-        + std::ops::BitAnd<u32, Output = U>
-        + PartialOrd<u32>
+        + std::ops::Shr<U, Output = U>
+        + std::ops::Shl<U, Output = U>
+        + std::ops::BitOr<U, Output = U>
+        + std::ops::BitAnd<U, Output = U>
+        + PartialOrd<U>
+        + std::ops::Not<Output = U>
+        + NumCast
+        + AsPrimitive<usize>
         + Copy,
 >(
     rule_number: U,
     num_variables_function: usize,
 ) -> U
-where
-    <U as std::ops::Shr<u32>>::Output: std::ops::BitAnd<u32>,
-    <<U as std::ops::Shr<u32>>::Output as std::ops::BitAnd<u32>>::Output: PartialEq<u32>,
 {
+    let u0: U = U::from(0).unwrap();
+    let u1: U = U::from(1).unwrap();
+    let unum_variables_function = U::from(num_variables_function).unwrap();
+
     #[cfg(debug_assertions)]
-    if rule_number >= ((1 << (1 << num_variables_function)) as u32) {
+    if (size_of::<U>() << 3) < (1 << num_variables_function) {
+        panic!("Unsigned type is not large enough to hold the rule number, please use a larger unsigned type");
+    }
+
+    #[cfg(debug_assertions)]
+    if rule_number >= (u1 << (u1 << unum_variables_function)) {
         panic!("The rule number must be less than 2^(2^n), n being the number of variables in the function");
     }
 
-    let mut blocksize = 1;
+    let mut blocksize = u1;
     let mut final_f = rule_number;
     for _ in 0..num_variables_function {
-        let mut source: u32 = 0;
-        while source < (1 << num_variables_function) {
+        let mut source = u0;
+        while source < (u1 << unum_variables_function) {
             let target = source + blocksize;
-            for i in 0..blocksize {
-                let f_target_i: bool = ((final_f >> (target + i)) & 1) != 0;
-                let f_source_i: bool = ((final_f >> (source + i)) & 1) != 0;
+            for i in 0..blocksize.as_() {
+                let i = U::from(i).unwrap();
+                let f_target_i: bool = ((final_f >> (target + i)) & u1) != u0;
+                let f_source_i: bool = ((final_f >> (source + i)) & u1) != u0;
                 let f_target_i_xor_f_source_i = f_target_i ^ f_source_i;
                 if f_target_i_xor_f_source_i {
-                    final_f = final_f | (1 << (target + i));
+                    final_f = final_f | (u1 << (target + i));
                 } else {
-                    final_f = final_f & !(1 << (target + i));
+                    final_f = final_f & !(u1 << (target + i));
                 }
             }
-            source = source + (blocksize << 1);
+            source = source + (blocksize << u1);
         }
-        blocksize = blocksize << 1;
+        blocksize = blocksize << u1;
     }
     final_f
 }
@@ -62,7 +78,7 @@ where
 /// # Returns
 /// The ANF transformed rule truth table, as boolean array
 /// # Panics
-/// Panics if the rule truth table length is not equal to 2^n, n being the number of variables in the function
+/// Panics if the rule truth table length is not equal to 2^n, n being the number of variables in the function (debug only)
 /// # Example
 /// ```
 /// use fast_boolean_anf_transform::fast_bool_anf_transform_bool_array;
@@ -121,6 +137,12 @@ mod tests {
     #[should_panic]
     fn test_fast_bool_anf_transform_unsigned_rule_number_too_large() {
         let _ = fast_bool_anf_transform_unsigned(16 as u32, 2);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_fast_bool_anf_transform_unsigned_not_enough_bits() {
+        let _ = fast_bool_anf_transform_unsigned(16 as u16, 5);
     }
 
     #[test]
