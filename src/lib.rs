@@ -2,7 +2,7 @@
 //! This crate provides two functions to transform cellular automata truth tables expressed as unsigned integers or boolean arrays into their Algebraic Normal Form (ANF) representation.
 
 use std::mem::size_of;
-use num_traits::{AsPrimitive, NumCast, Unsigned};
+use num_traits::{AsPrimitive, Bounded, NumCast, Unsigned};
 
 /// Fast ANF transformation for cellular automata truth table rules expressed as unsigned integers
 /// # Arguments
@@ -27,6 +27,7 @@ pub fn fast_bool_anf_transform_unsigned<
         + PartialOrd<U>
         + std::ops::Not<Output = U>
         + NumCast
+        + Bounded
         + AsPrimitive<usize>
         + Copy,
 >(
@@ -44,7 +45,7 @@ pub fn fast_bool_anf_transform_unsigned<
     }
 
     #[cfg(debug_assertions)]
-    if rule_number >= (u1 << (u1 << unum_variables_function)) {
+    if rule_number > (U::max_value() >> U::from((size_of::<U>() << 3) - (1 << num_variables_function)).unwrap()) {
         panic!("The rule number must be less than 2^(2^n), n being the number of variables in the function");
     }
 
@@ -131,6 +132,7 @@ mod tests {
 
         assert_eq!(fast_bool_anf_transform_unsigned(240u32, 3), 16);
         assert_eq!(fast_bool_anf_transform_unsigned(30u32, 3), 30);
+        assert_eq!(fast_bool_anf_transform_unsigned(30u8, 3), 30);
     }
 
     #[test]
